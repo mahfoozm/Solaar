@@ -878,12 +878,13 @@ class Key(Condition):
             logger.debug(f'rule Key assuming action "{default_action}" for "{args}"')
             key = args
             action = default_action
-        elif isinstance(args, list):
+        else: # removed redundant conditions
             if len(args) == 1:
                 logger.debug(f'rule Key assuming action "{default_action}" for "{args}"')
                 key, action = args[0], default_action
-            elif len(args) >= 2:
+            else:
                 key, action = args[:2]
+
 
         if isinstance(key, str) and key in CONTROL:
             self.key = CONTROL[key]

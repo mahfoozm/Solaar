@@ -467,7 +467,7 @@ class PersistentRemappableAction:
             return f"Consumer: {str(self.remapped)}"
         elif self.actionId == special_keys.ACTIONID.Internal:
             return f"Internal Action {str(self.remapped)}"
-        elif self.actionId == special_keys.ACTIONID.Internal:
+        elif self.actionId == special_keys.ACTIONID.Power:  # bugfix: changed from duplicate Internal condition to Power
             return f"Power {str(self.remapped)}"
         else:
             return "Unknown"
