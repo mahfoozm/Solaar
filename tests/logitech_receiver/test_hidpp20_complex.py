@@ -922,3 +922,32 @@ def test_onboard_profiles_device(responses, name, count, buttons, gbuttons, sect
 
     yml_dump = yaml.dump(profiles)
     assert yaml.safe_load(yml_dump).to_bytes().hex() == profiles.to_bytes().hex()
+
+
+@pytest.mark.parametrize(
+    "actionId, remapped, modifiers, expected_action",
+    [
+        (special_keys.ACTIONID.Empty, 0, 0, None),
+        (special_keys.ACTIONID.Key, 0x0001, 0x01, "Key: Cntrl+1"),
+        (special_keys.ACTIONID.Mouse, 0x0001, 0, "Mouse Button: 1"),
+        (special_keys.ACTIONID.Xdisp, 0x0010, 0, "X Displacement 16"),
+        (special_keys.ACTIONID.Ydisp, 0x0010, 0, "Y Displacement 16"),
+        (special_keys.ACTIONID.Vscroll, 0x0001, 0, "Vertical Scroll 1"),
+        (special_keys.ACTIONID.Hscroll, 0x0001, 0, "Horizontal Scroll: 1"),
+        (special_keys.ACTIONID.Consumer, 181, 0, "Consumer: 181"),
+        (special_keys.ACTIONID.Internal, 0x0001, 0, "Internal Action 1"),
+        (special_keys.ACTIONID.Power, 0x0001, 0, "Power 1"),
+        (0xFF, 0x0001, 0, "Unknown"),
+    ],
+)
+def test_persistent_remappable_action_types(actionId, remapped, modifiers, expected_action):
+    """Test different action types in PersistentRemappableAction"""
+    device = fake_hidpp.Device(
+        "TEST", responses=fake_hidpp.responses_key, 
+        feature=hidpp20_constants.SupportedFeature.PERSISTENT_REMAPPABLE_ACTION
+    )
+    action = hidpp20.PersistentRemappableAction(device, 1, 0x51, actionId, remapped, modifiers, 0)
+    
+    assert action.action == expected_action
+    assert action.actionType == special_keys.ACTIONID[actionId]
+    assert action.modifiers == special_keys.modifiers[modifiers]

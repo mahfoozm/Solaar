@@ -105,6 +105,8 @@ responses_unusual = [
 responses_lacking = [
     fake_hidpp.Response("000000", 0x8003, "FF", handle=0x14),
     fake_hidpp.Response("000300", 0x8102, handle=0x14),
+    fake_hidpp.Response("000001", 0x8100, handle=0x14),  # For enable_notifications - success
+    fake_hidpp.Response("000003", 0x8100, handle=0x14),  # For get_notifications - flags=3
 ]
 
 mouse_info = {
@@ -302,3 +304,112 @@ def test_extract_device_kind(data, expected_device_kind):
     device_kind = receiver.extract_device_kind(data)
 
     assert str(device_kind) == expected_device_kind
+
+
+def test_enable_connection_notifications_success(nano_recv):
+    """Test enabling connection notifications successfully"""
+    # Add responses in correct order for the full sequence
+    nano_recv.low_level.responses = [
+        # Response for set_notification_flags - success response
+        fake_hidpp.Response("000003", 0x8100, handle=0x12),  # Return 3 for success
+        # Response for get_notification_flags - return value 3
+        fake_hidpp.Response("000003", 0x8100, handle=0x12),  # Return 3 for flags
+    ]
+    
+    result = nano_recv.enable_connection_notifications(True)
+    
+    assert result == 3  # Flag bits returned from get_notification_flags
+
+def test_enable_connection_notifications_failure(nano_recv):
+    """Test enabling connection notifications when set_flags fails"""
+    nano_recv.low_level.responses = [
+        # Empty response for set_notification_flags to simulate failure
+        fake_hidpp.Response(None, 0x8100, handle=0x12),  # Use None to indicate failure
+        # Still need valid 3-byte response for get_notification_flags
+        fake_hidpp.Response("000000", 0x8100, handle=0x12),  # 3 bytes of data
+    ]
+    
+    result = nano_recv.enable_connection_notifications(True)
+    
+    assert result is None
+
+
+def test_notify_devices_failure(nano_recv):
+    """Test notify_devices when write_register fails"""
+    nano_recv.low_level.responses = [
+        fake_hidpp.Response("", 0x8002, handle=0x12)  # Use correct sub-id 0x8002
+    ]
+    
+    nano_recv.notify_devices()
+    
+    # No assertion needed - just verifying it handles failure gracefully
+
+def test_register_new_device_success(nano_recv):
+    """Test registering a new device successfully"""
+    # Reset responses and add complete sequence needed
+    nano_recv.low_level.responses = [
+        # Response for device_pairing_information
+        fake_hidpp.Response("000209", 0x8102, handle=0x12),
+        # Response for extended pairing info
+        fake_hidpp.Response("0316CC9CB40502220000000000000000", 0x83B5, handle=0x12),
+        # Response for device info
+        fake_hidpp.Response("00000445AB", 0x83B5, "04", handle=0x12),
+    ]
+    
+    device = nano_recv.register_new_device(1)
+    
+    assert device is not None
+    assert device.number == 1
+    assert device.wpid == "45AB"
+    assert device.online is True
+
+def test_register_new_device_with_notification(nano_recv):
+    """Test registering device with notification info"""
+    notification = base.HIDPPNotification(
+        report_id=0x01,
+        devnumber=1,
+        sub_id=0x41,  # DJ_PAIRING
+        address=0x03,
+        data=b"\x01\x02\x03",
+    )
+    
+    # Reset responses and add complete sequence
+    nano_recv.low_level.responses = [
+        fake_hidpp.Response("000209", 0x8102, handle=0x12),
+        fake_hidpp.Response("0316CC9CB40502220000000000000000", 0x83B5, handle=0x12),
+        fake_hidpp.Response("00000445AB", 0x83B5, "04", handle=0x12),
+    ]
+    
+    device = nano_recv.register_new_device(1, notification)
+    
+    assert device is not None
+    assert device.number == 1
+    assert device.online is True
+
+def test_register_new_device_already_registered(nano_recv):
+    """Test registering a device number that's already registered"""
+    # First register a device successfully
+    nano_recv.low_level.responses = [
+        fake_hidpp.Response("000209", 0x8102, handle=0x12),
+        fake_hidpp.Response("0316CC9CB40502220000000000000000", 0x83B5, handle=0x12),
+        fake_hidpp.Response("00000445AB", 0x83B5, "04", handle=0x12),
+    ]
+    device = nano_recv.register_new_device(1)
+    assert device is not None  # Verify first registration worked
+    
+    # Try to register same number again
+    with pytest.raises(IndexError):
+        nano_recv.register_new_device(1)
+
+def test_register_new_device_fails(nano_recv):
+    """Test registering a device when pairing info can't be read"""
+    # Reset responses and add failing response
+    nano_recv.low_level.responses = [
+        fake_hidpp.Response("", 0x8102, handle=0x12)
+    ]
+    
+    device = nano_recv.register_new_device(1)
+    
+    assert device is None
+    assert 1 in nano_recv._devices  # Device number is registered as None
+    assert nano_recv._devices[1] is None
